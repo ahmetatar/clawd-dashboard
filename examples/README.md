@@ -12,6 +12,7 @@ Sıra, `../clawd-cyd-guide.md` rehberindeki pratik adımlarını takip eder.
 | `04-touch` | Dokunmatik (XPT2046, ayrı SPI/HSPI, polling) + kalibrasyon | 4.3 |
 | `05-touch-irq` | Dokunmatik IRQ ile touch-to-wake (uyku/uyan) | 4.3+ |
 | `06-wifi-health` | WiFi + mDNS (clawd.local) + GET /health | 6 |
+| `07-async-events` | ESPAsyncWebServer: POST /e + dokunmatik izin (/perm) | 7 |
 
 Her projeyi kendi klasöründe çalıştır:
 
