@@ -1,0 +1,18 @@
+# PlatformIO build çıktıları
+.pio/
+.pioenvs/
+.piolibdeps/
+
+# Sırlar — WiFi şifresi vb. ASLA commit edilmez
+secrets.h
+
+# IDE
+.vscode/
+.idea/
+
+# macOS
+.DS_Store
+
+# Yerel test artıkları
+_clawd_writetest.txt
+*.pem
