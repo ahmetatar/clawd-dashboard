@@ -3,8 +3,10 @@
 .pioenvs/
 .piolibdeps/
 
-# Sırlar — WiFi şifresi vb. ASLA commit edilmez
+# Sırlar — WiFi şifresi, API key vb. ASLA commit edilmez
 secrets.h
+secrets.sh
+*.key
 
 # IDE
 .vscode/
@@ -16,3 +18,7 @@ secrets.h
 # Yerel test artıkları
 _clawd_writetest.txt
 *.pem
+
+# Python
+__pycache__/
+*.pyc
