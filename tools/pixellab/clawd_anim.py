@@ -342,38 +342,9 @@ def anim_oops(n=8):
         out.append(c)
     return out
 
-# --- uyku: sagdan yukari suzulen zzZZ ---
-ZZZ = (120, 132, 156, 255)                              # soluk uykulu gri-mavi
-# gercek 'Z' glyph, 4 genis x 5 yuksek: ust cizgi -> kose diagonal -> alt cizgi
-#   X X X X
-#   . . . X
-#   . . X .
-#   . X . .
-#   X X X X
-_ZGLYPH = [(0,0),(1,0),(2,0),(3,0),
-                             (3,1),
-                       (2,2),
-                 (1,3),
-           (0,4),(1,4),(2,4),(3,4)]
-def draw_z(c, x, y, s):
-    """(x,y) sol-ust kosesine s kat olcekli 'Z' bas."""
-    p = c.load()
-    for (gx, gy) in _ZGLYPH:
-        for a in range(s):
-            for b in range(s):
-                px_, py_ = x + gx * s + a, y + gy * s + b
-                if 0 <= px_ < CANVAS and 0 <= py_ < CANVAS: p[px_, py_] = ZZZ
-
-#          (x, y, olcek) — SABIT, ayrik konumlar: kafaya yakin kucuk -> yukarida buyuk
-_ZTRAIL = [(43, 12, 1), (50, 6, 1), (56, -1, 2)]
-def draw_zzz(c, i, n):
-    """3 Z sabit ayrik konumda; sirayla belirir (z -> zz -> zzZ) -> yukari suzulme hissi."""
-    count = (i // 2) % len(_ZTRAIL) + 1                 # 1,1,2,2,3,3,1,1 (dongu)
-    for k in range(count):
-        draw_z(c, *_ZTRAIL[k])
-
+# --- uyku: sadece clawd (kapali gozler + nefes); zzZZ YOK (kullanici istegi) ---
 def anim_sleep(n=8):
-    """Uyuyan clawd: idle nefesi + KAPALI cizgi gozler + sagdan yukari suzulen zzZZ."""
+    """Uyuyan clawd: idle nefesi + KAPALI cizgi gozler. Ustunde ek sembol yok."""
     out = []
     for i in range(n):
         sy = 1.0 - 0.06 * (0.5 - 0.5 * math.cos(i / n * 2 * math.pi))   # ayni nefes
@@ -382,7 +353,6 @@ def anim_sleep(n=8):
         cl = cl.resize((CW, nh), Image.NEAREST)
         c = base_canvas()
         c.alpha_composite(cl, (CX, CY + (CH - nh)))     # ayaklar sabit (alt hizali)
-        draw_zzz(c, i, n)
         out.append(c)
     return out
 
