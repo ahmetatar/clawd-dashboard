@@ -9,7 +9,7 @@ import sys, os, glob, shutil, math
 from PIL import Image, ImageDraw
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-BG = (239, 239, 234)
+BG = (36, 39, 44)  # fume (montaj onizleme; include/config.h + 03_png_to_header.py ile AYNI)
 
 # --- kanonik clawd: sadik (rotate_character) karakterin temiz south rotation'i ---
 # Sabit yol; yoksa char_zip2 export'undan cek.
