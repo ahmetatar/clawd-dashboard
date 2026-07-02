@@ -292,7 +292,44 @@ def anim_happy(n=8):
         out.append(c)
     return out
 
-ANIMS = {"idle": anim_idle, "hacking": anim_hacking, "happy": anim_happy, "think": anim_think}
+# --- oops ogeleri: kirmizi ! + mavi ter damlasi ---
+EXCL = (226, 44, 48, 255); EXCL_SH = (150, 26, 30, 255)
+SWEAT = (96, 176, 228, 255); SWEAT_HI = (205, 234, 255, 255)
+def draw_exclaim(c, big):
+    """Bas ustunde (krem zeminde) kirmizi bold '!'. big -> hafif buyur (vurgu)."""
+    d = ImageDraw.Draw(c)
+    top = 2 if big else 3
+    bx = 30
+    d.rectangle([bx, top, bx + 2, 9], fill=EXCL)          # cubuk
+    d.rectangle([bx, 11, bx + 2, 12], fill=EXCL)          # nokta
+    d.rectangle([bx + 2, top, bx + 2, 12], fill=EXCL_SH)  # sag golge (3B)
+def draw_sweat(c, i):
+    """Sag yanaktan dokulen mavi ter damlasi (dongude tekrar)."""
+    p = c.load()
+    sy = 16 + (i % 4) * 3                                  # asagi damlar
+    sx = 47
+    drop = [(1,0),(0,1),(1,1),(2,1),(0,2),(1,2),(2,2),(1,3)]   # damla sekli
+    for (dx, dy) in drop:
+        x, y = sx + dx, sy + dy
+        if 0 <= x < CANVAS and 0 <= y < CANVAS: p[x, y] = SWEAT
+    if 0 <= sx+1 < CANVAS and 0 <= sy < CANVAS: p[sx+1, sy] = SWEAT_HI  # ust parlak
+
+def anim_oops(n=8):
+    """Eyvah: clawd hizli titrer (yatay), bas ustunde kirmizi ! (nabiz gibi),
+    sag yanaktan mavi ter damlasi dokulur."""
+    out = []
+    shake = [-2, 2, -2, 1, -1, 2, -2, 1]
+    for i in range(n):
+        cl = clawd_variant()                              # govde sabit; titreme yerlesimde
+        c = base_canvas()
+        place(c, cl, dx=shake[i % len(shake)])
+        draw_exclaim(c, big=(i % 2 == 0))
+        draw_sweat(c, i)
+        out.append(c)
+    return out
+
+ANIMS = {"idle": anim_idle, "hacking": anim_hacking, "happy": anim_happy,
+         "think": anim_think, "oops": anim_oops}
 
 def save(name, frames):
     dst = os.path.join(HERE, "out", f"anim_{name}")
