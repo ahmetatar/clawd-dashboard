@@ -31,6 +31,10 @@ public:
   // Bir olay/dokunma oldu: idle sayacini sifirla (tick ACTIVE'e cekecek).
   void notifyActivity() { _lastActivity = millis(); }
 
+  // Claude mesgul mu? true iken uyku/kisma kapali (Stop gelene kadar).
+  // main.cpp her olayda cagirir: session.stop -> false, aksi halde true.
+  void setBusy(bool b) { _busy = b; }
+
   State state() const { return _state; }
   bool  asleep() const { return _state == SLEEP; }
 
@@ -40,7 +44,13 @@ public:
     uint32_t now = millis();
     uint32_t idle = now - _lastActivity;
 
-    State next = (idle >= T_SLEEP_MS) ? SLEEP
+    // Claude mesgulken uyanik tut: emniyet tavanina kadar hep ACTIVE (kisma/uyku
+    // yok). Stop gelince (_busy=false) idle sayaci son olaydan baslar -> normal
+    // kis/uyku. Tavan asilirsa (Stop kayip) normal idle'a dus.
+    bool hold = _busy && (idle < T_BUSY_MAX_MS);
+
+    State next = hold                 ? ACTIVE
+               : (idle >= T_SLEEP_MS) ? SLEEP
                : (idle >= T_DIM_MS)   ? DIM
                                       : ACTIVE;
     bool changed = (next != _state);
@@ -59,6 +69,7 @@ public:
 
 private:
   State    _state       = ACTIVE;
+  bool     _busy         = false;    // Claude calisiyor mu (Stop'a kadar)
   uint32_t _lastActivity = 0;
   uint32_t _lastRamp     = 0;
   uint16_t _cur          = BL_FULL;   // 0..255, ara degerler icin 16-bit
