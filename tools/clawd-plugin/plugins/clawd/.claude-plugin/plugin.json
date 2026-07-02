@@ -1,6 +1,6 @@
 {
   "name": "clawd",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "clawd CYD maskotunu Claude Code hook olaylariyla surer (POST /e -> clawd.local): think / hacking / happy / oops / idle.",
   "author": { "name": "Ahmet Atar" },
   "homepage": "https://github.com/ahmetatar/clawd-dashboard"

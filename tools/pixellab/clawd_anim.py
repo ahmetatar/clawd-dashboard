@@ -356,8 +356,55 @@ def anim_sleep(n=8):
         out.append(c)
     return out
 
+# --- ask: clawd sana SORU soruyor -> ustunde sik, parlak/golgeli "?" (3B) ---
+# clawd blocky diliyle uyumlu, altin/amber cam gibi. Ince strok oldugu icin
+# surround-shader yerine drop-shadow + ust-sol shine (kucuk glyph'te en temizi).
+QBODY = (252, 206, 92, 255); QHI = (255, 246, 206, 255)
+QSH   = (176, 118, 40, 255); QLN = (92, 60, 24, 255)
+_QM = [(2,0),(3,0),(4,0),(5,0),(6,0),          # ust yay
+       (1,1),(2,1),(6,1),(7,1),
+       (1,2),(2,2),(6,2),(7,2),
+       (6,3),(7,3),                              # sag kenar asagi
+       (5,4),(6,4),
+       (4,5),(5,5),
+       (3,6),(4,6),                              # capraz -> govde
+       (3,7),(4,7),
+       (3,8),(4,8),                              # govde alt
+       (3,10),(4,10),                            # nokta
+       (3,11),(4,11)]
+_QMset = set(_QM)
+def _build_qmark():
+    w, h = 10, 13
+    spr = Image.new("RGBA", (w, h), (0, 0, 0, 0)); p = spr.load()
+    for (x, y) in _QM:                            # 1) drop shadow (sag-alt)
+        if (x+1, y+1) not in _QMset and 0 <= x+1 < w and 0 <= y+1 < h:
+            p[x+1, y+1] = QLN if ((x+1, y+2) not in _QMset) else QSH
+    for (x, y) in _QM: p[x, y] = QBODY            # 2) govde
+    for (x, y) in _QM:                            # 3) ust-sol shine
+        if (x, y-1) not in _QMset and (x-1, y) not in _QMset:
+            p[x, y] = QHI
+    return spr
+_QMARK = _build_qmark()
+
+def anim_ask(n=8):
+    """clawd sana soru soruyor: sakin durur, gozler yukari '?'ye bakar; ustundeki
+    parlak '?' yumusakca inip cikar (nabiz gibi hafif). Interrupt DEGIL — Claude
+    AskUserQuestion/ExitPlanMode ile SENI bekliyor."""
+    out = []
+    for i in range(n):
+        ph = i / n * 2 * math.pi
+        dx = round(1.0 * math.sin(ph))                       # cok hafif sallanma
+        eye_dx = (0, 0, 1, 1, 0, -1, -1, 0)[i % 8]
+        cl = clawd_variant(eye_dx=eye_dx, eye_dy=-1)         # yukari bakar
+        c = base_canvas()
+        place(c, cl, dx=dx)
+        bob = round(1.5 * math.sin(ph))                      # -1.5..1.5 yumusak bob
+        c.alpha_composite(_QMARK, (27, 3 - bob))             # bas ustunde ortali
+        out.append(c)
+    return out
+
 ANIMS = {"idle": anim_idle, "hacking": anim_hacking, "happy": anim_happy,
-         "think": anim_think, "oops": anim_oops, "sleep": anim_sleep}
+         "think": anim_think, "oops": anim_oops, "sleep": anim_sleep, "ask": anim_ask}
 
 def save(name, frames):
     dst = os.path.join(HERE, "out", f"anim_{name}")

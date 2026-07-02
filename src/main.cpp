@@ -64,11 +64,18 @@ static void setAnim(AnimId id) {
   Serial.printf("[clawd] anim -> %s\n", a.name);
 }
 
+// "Kullanici bekleniyor" tool'lari: Claude soru/onay soruyor -> calisiyor DEGIL,
+// SENI bekliyor. Bunlar da isimli tool.pre gonderir (interrupt'in aksine), o yuzden
+// ADIYLA tespit edip hacking yerine sakin think pozuna alabiliriz.
+static bool isWaitingTool(const char *t) {
+  return !strcmp(t, "AskUserQuestion") || !strcmp(t, "ExitPlanMode");
+}
+
 // olay -> animasyon eslemesi (protokol 9. bolum). -1 = degisiklik yok.
 static int mapEvent(const Ev &e) {
   const char *k = e.k;
   if (!strcmp(k, "think"))          return e.on ? ANIM_THINK : ANIM_IDLE;
-  if (!strcmp(k, "tool.pre"))       return ANIM_HACKING;
+  if (!strcmp(k, "tool.pre"))       return isWaitingTool(e.tool) ? ANIM_ASK : ANIM_HACKING;
   if (!strcmp(k, "tool.post"))      return e.ok ? ANIM_IDLE : ANIM_OOPS;
   if (!strcmp(k, "git"))            return ANIM_HAPPY;
   if (!strcmp(k, "session.start"))  return ANIM_HAPPY;
@@ -127,12 +134,13 @@ static void updateHud(const Ev &e) {
   const char *k = e.k;
   if (!strcmp(k, "session.start")) { setHudCat(HC_HAPPY); hud.setTool(""); return; }
   if (!strcmp(k, "session.stop"))  { setHudCat(HC_IDLE);  hud.setTool(""); return; }
-  if (!strcmp(k, "tool.post"))     { setHudCat(e.ok ? HC_IDLE : HC_OOPS); return; }
+  if (!strcmp(k, "tool.post"))     { setHudCat(e.ok ? HC_IDLE : HC_OOPS); if (e.ok) hud.setTool(""); return; }
   if (!strcmp(k, "git"))           { setHudCat(HC_HAPPY); return; }
   if (!strcmp(k, "prompt.submit") || !strcmp(k, "compact") || !strcmp(k, "wait") ||
       (!strcmp(k, "think") && e.on)) { setHudCat(HC_THINK); hud.setTool(""); return; }
   if (!strcmp(k, "think") && !e.on)  { setHudCat(HC_IDLE); return; }
   if (!strcmp(k, "tool.pre") || !strcmp(k, "agent.spawn")) {
+    if (isWaitingTool(e.tool)) { setHudCat(HC_THINK); hud.setTool("waiting..."); return; }
     setHudCat(HC_WORK);
     hud.setTool(niceTool(e.tool[0] ? e.tool : e.g));
     return;

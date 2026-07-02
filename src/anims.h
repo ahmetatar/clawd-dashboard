@@ -10,8 +10,9 @@
 #include "anims/clawd_think.h"
 #include "anims/clawd_oops.h"
 #include "anims/clawd_sleep.h"
+#include "anims/clawd_ask.h"
 
-enum AnimId { ANIM_IDLE, ANIM_HACKING, ANIM_HAPPY, ANIM_THINK, ANIM_OOPS, ANIM_SLEEP, ANIM_COUNT };
+enum AnimId { ANIM_IDLE, ANIM_HACKING, ANIM_HAPPY, ANIM_THINK, ANIM_OOPS, ANIM_SLEEP, ANIM_ASK, ANIM_COUNT };
 
 struct Anim {
   const uint16_t (*frames)[ANIM_W * ANIM_H];  // [count][W*H]
@@ -31,4 +32,5 @@ static const Anim ANIMS[ANIM_COUNT] = {
   { clawd_think,   CLAWD_THINK_FRAMES,   200, false, false, true,  "think"   },
   { clawd_oops,    CLAWD_OOPS_FRAMES,     91, true,  false, true,  "oops"    },
   { clawd_sleep,   CLAWD_SLEEP_FRAMES,   200, false, false, false, "sleep"   },  // DIM'de: uyuklama pozu
+  { clawd_ask,     CLAWD_ASK_FRAMES,     130, false, false, true,  "ask"     },  // AskUserQuestion: "?" seni bekliyor
 };
