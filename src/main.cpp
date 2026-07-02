@@ -205,7 +205,15 @@ void loop() {
   if (isTouched) power.notifyActivity();
 
   // 3) guc durumunu guncelle + arka isik fade; durum degistiyse yan etki uygula
-  if (power.tick()) applyPowerEdge(power.state());
+  if (power.tick()) {
+    PowerManager::State st = power.state();
+    applyPowerEdge(st);                              // CPU frekansi
+    // Isik dustugunde clawd uyuklama pozuna gecer (kapali gozler + zzZZ).
+    if (st == PowerManager::DIM) setAnim(ANIM_SLEEP);
+    // Uyandi: uyku pozundaysak idle'a don (bir olay yeni anim atadiysa ona dokunma).
+    else if (st == PowerManager::ACTIVE && curAnim == ANIM_SLEEP) setAnim(ANIM_IDLE);
+    // SLEEP: ekran kapali, cizim yok.
+  }
 
   // uykudan yeni ciktiysak: krem zemini tazele (son frame duruyordu)
   if (wasAsleep && !power.asleep()) tft.fillScreen(tft.color565(239, 239, 234));
