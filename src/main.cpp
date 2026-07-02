@@ -1,0 +1,227 @@
+// clawd — ana uygulama (CYD / ESP32-2432S028R), LANDSCAPE.
+//
+// Fiziksel Claude Code maskotu: WiFi'dan POST /e olayi alir, 5 ifade
+// animasyonuyla (idle/hacking/happy/think/oops) tepki verir.
+//
+// ILK OZELLIK — GUC YONETIMI (bkz. power.h):
+//   20 sn olaysiz -> arka isik %11'e kisilir (dim), animasyon doner
+//   90 sn olaysiz -> ekran soner, animasyon durur, CPU 80MHz, WiFi modem-sleep
+//   POST /e veya dokunma -> aninda tam parlaklik + 240MHz + animasyon (uyanma)
+//
+// MIMARI: AsyncWebServer callback'leri AYRI task'ta calisir; SPI'ye (ekran)
+// oradan DOKUNULMAZ. /e callback'i olayi thread-safe kuyruga push eder;
+// tum cizim ve dokunmatik yalniz loop()'ta olur.
+
+#include <Arduino.h>
+#include <WiFi.h>
+#include <ESPmDNS.h>
+#include <AsyncTCP.h>
+#include <ESPAsyncWebServer.h>
+#include <AsyncJson.h>
+#include <ArduinoJson.h>
+#include <SPI.h>
+#include <TFT_eSPI.h>
+#include <XPT2046_Touchscreen.h>
+#include "config.h"
+#include "secrets.h"
+#include "anims.h"
+#include "power.h"
+
+TFT_eSPI tft = TFT_eSPI();
+SPIClass touchSPI(HSPI);
+XPT2046_Touchscreen ts(T_CS);
+AsyncWebServer server(80);
+PowerManager power;
+
+// ---- olay kuyrugu (07'den) ----
+struct Ev { char k[24]; char g[10]; char s[48]; bool ok; bool on; int ctx; };
+QueueHandle_t evq;
+
+// ---- animasyon durumu ----
+const int SW   = ANIM_W * ANIM_S;                 // 192
+const int SH   = ANIM_H * ANIM_S;                 // 192
+static uint16_t linebuf[ANIM_W * ANIM_S];
+int xoff, yoff;
+AnimId  curAnim  = ANIM_IDLE;
+int     frame    = 0;
+uint32_t lastFrame = 0;
+uint32_t revertAt  = 0;                            // gecici ifade -> idle zamani (0 = yok)
+
+static void led(bool g, bool b) {                 // active-low
+  digitalWrite(LED_G, g ? LOW : HIGH);
+  digitalWrite(LED_B, b ? LOW : HIGH);
+}
+
+static void setAnim(AnimId id) {
+  curAnim = id;
+  frame = 0;
+  lastFrame = 0;                                   // bir sonraki tick'te hemen ciz
+  const Anim &a = ANIMS[id];
+  revertAt = a.transient ? millis() + HOLD_MS : 0;
+  led(a.led_g, a.led_b);
+  Serial.printf("[clawd] anim -> %s\n", a.name);
+}
+
+// olay -> animasyon eslemesi (protokol 9. bolum). -1 = degisiklik yok.
+static int mapEvent(const Ev &e) {
+  const char *k = e.k;
+  if (!strcmp(k, "think"))          return e.on ? ANIM_THINK : ANIM_IDLE;
+  if (!strcmp(k, "tool.pre"))       return ANIM_HACKING;
+  if (!strcmp(k, "tool.post"))      return e.ok ? ANIM_IDLE : ANIM_OOPS;
+  if (!strcmp(k, "git"))            return ANIM_HAPPY;
+  if (!strcmp(k, "session.start"))  return ANIM_HAPPY;
+  if (!strcmp(k, "agent.spawn"))    return ANIM_HACKING;
+  if (!strcmp(k, "compact"))        return ANIM_THINK;
+  if (!strcmp(k, "wait"))           return ANIM_THINK;
+  if (!strcmp(k, "prompt.submit"))  return ANIM_THINK;
+  if (!strcmp(k, "session.stop"))   return ANIM_IDLE;
+  if (!strcmp(k, "status"))         return -1;     // sadece canli tut, animasyonu bozma
+  return ANIM_IDLE;
+}
+
+static void drawFrame(AnimId id, int f) {
+  const uint16_t *fr = ANIMS[id].frames[f];
+  for (int y = 0; y < ANIM_H; y++) {
+    for (int x = 0; x < ANIM_W; x++) {
+      uint16_t c = fr[y * ANIM_W + x];
+      for (int s = 0; s < ANIM_S; s++) linebuf[x * ANIM_S + s] = c;
+    }
+    for (int s = 0; s < ANIM_S; s++) tft.pushImage(xoff, yoff + y * ANIM_S + s, SW, 1, linebuf);
+  }
+}
+
+// ---- WiFi ----
+static bool connectWiFi() {
+  tft.fillScreen(TFT_BLACK);
+  tft.setTextDatum(TC_DATUM);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.drawString("WiFi baglaniyor...", tft.width() / 2, tft.height() / 2, 2);
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(WIFI_SSID, WIFI_PASS);
+  uint32_t t0 = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - t0 < 20000) { delay(300); Serial.print("."); }
+  Serial.println();
+  return WiFi.status() == WL_CONNECTED;
+}
+
+void setup() {
+  Serial.begin(115200);
+  delay(200);
+  Serial.println("\n[clawd] ana uygulama basliyor");
+
+  pinMode(LED_G, OUTPUT); pinMode(LED_B, OUTPUT);
+  led(false, false);
+
+  tft.init();
+  tft.setRotation(1);                              // LANDSCAPE 320x240
+  tft.setSwapBytes(true);
+  power.begin();                                   // BL pinini LEDC'ye devralir (tft.init SONRASI)
+
+  touchSPI.begin(T_CLK, T_MISO, T_MOSI, T_CS);
+  ts.begin(touchSPI);
+  ts.setRotation(1);
+
+  xoff = (tft.width()  - SW) / 2;                  // (320-192)/2 = 64
+  yoff = (tft.height() - SH) / 2;                  // (240-192)/2 = 24
+
+  evq = xQueueCreate(16, sizeof(Ev));
+
+  if (!connectWiFi()) {
+    tft.fillScreen(TFT_BLACK);
+    tft.setTextColor(TFT_RED, TFT_BLACK);
+    tft.drawString("WiFi BAGLANAMADI", tft.width() / 2, tft.height() / 2, 2);
+    Serial.println("[clawd] WiFi BAGLANAMADI");
+    return;
+  }
+  WiFi.setSleep(true);                             // modem-sleep: association korunur, gelen paket uyandirir
+  Serial.printf("[clawd] WiFi OK. IP: %s\n", WiFi.localIP().toString().c_str());
+  if (MDNS.begin("clawd")) MDNS.addService("http", "tcp", 80);
+
+  server.on("/health", HTTP_GET, [](AsyncWebServerRequest *req) {
+    req->send(200, "application/json", "{\"fw\":\"1.0.0\",\"caps\":[\"anim\",\"led\",\"touch\",\"power\"]}");
+  });
+
+  // POST /e (JSON) -> kuyruga push, 204
+  auto *eHandler = new AsyncCallbackJsonWebHandler("/e", [](AsyncWebServerRequest *req, JsonVariant &json) {
+    JsonObject o = json.as<JsonObject>();
+    Ev e{};
+    strlcpy(e.k, o["k"] | "?", sizeof(e.k));
+    JsonObject d = o["d"];
+    strlcpy(e.g, d["g"] | "", sizeof(e.g));
+    strlcpy(e.s, d["s"] | (d["tool"] | (d["op"] | "")), sizeof(e.s));
+    e.ok  = d["ok"]  | true;
+    e.on  = d["on"]  | false;
+    e.ctx = d["ctx"] | -1;
+    xQueueSend(evq, &e, 0);
+    req->send(204);
+  });
+  eHandler->setMethod(HTTP_POST);
+  server.addHandler(eHandler);
+
+  server.onNotFound([](AsyncWebServerRequest *req) { req->send(404, "text/plain", "yok"); });
+  server.begin();
+  Serial.println("[clawd] HTTP :80 ayakta (/e /health)");
+
+  tft.fillScreen(tft.color565(239, 239, 234));     // krem letterbox
+  setAnim(ANIM_IDLE);
+}
+
+// Uyku durumu kenarlarinda CPU/uyandirma yan etkileri.
+static void applyPowerEdge(PowerManager::State st) {
+  if (st == PowerManager::SLEEP) {
+    setCpuFrequencyMhz(CPU_HZ_SLEEP);
+    Serial.println("[clawd] uyku: ekran kapali, CPU 80MHz (WiFi ayakta)");
+  } else {                                          // ACTIVE / DIM -> tam hiz
+    setCpuFrequencyMhz(CPU_HZ_ACTIVE);
+  }
+}
+
+// Dokunma var mi? (uyandirma icin sadece basinc yeterli — kalibrasyon gerekmez)
+static bool touched() {
+  if (!ts.tirqTouched() && !ts.touched()) return false;
+  TS_Point p = ts.getPoint();
+  return p.z >= 200;
+}
+
+void loop() {
+  bool wasAsleep = power.asleep();
+  bool isTouched = touched();
+
+  // Uyandirma kaynagi (event/dokunma) varsa ve uykudaysak CPU'yu HERSEYDEN ONCE
+  // tam hiza al: uyku 80MHz iken UART/cizim bozulmasin, olay tam hizda islensin.
+  if (wasAsleep && (uxQueueMessagesWaiting(evq) > 0 || isTouched))
+    setCpuFrequencyMhz(CPU_HZ_ACTIVE);
+
+  // 1) olay kuyrugunu bosalt — gelen olay = aktivite (WiFi ile uyanma buradan)
+  Ev e;
+  while (xQueueReceive(evq, &e, 0) == pdTRUE) {
+    power.notifyActivity();
+    int id = mapEvent(e);
+    if (id >= 0 && id != (int)curAnim) setAnim((AnimId)id);
+    Serial.printf("[clawd] olay k=%s g=%s\n", e.k, e.g);
+  }
+
+  // 2) dokunma = aktivite (uykuda da uyandirir)
+  if (isTouched) power.notifyActivity();
+
+  // 3) guc durumunu guncelle + arka isik fade; durum degistiyse yan etki uygula
+  if (power.tick()) applyPowerEdge(power.state());
+
+  // uykudan yeni ciktiysak: krem zemini tazele (son frame duruyordu)
+  if (wasAsleep && !power.asleep()) tft.fillScreen(tft.color565(239, 239, 234));
+
+  // 4) gecici ifade suresi doldu -> idle
+  if (revertAt && millis() >= revertAt) setAnim(ANIM_IDLE);
+
+  // 5) animasyon — uykuda cizme (ekran zaten kapali, CPU'yu bosa harcama)
+  if (!power.asleep()) {
+    uint32_t now = millis();
+    if (now - lastFrame >= ANIMS[curAnim].interval) {
+      lastFrame = now;
+      drawFrame(curAnim, frame);
+      frame = (frame + 1) % ANIMS[curAnim].count;
+    }
+  }
+
+  delay(power.asleep() ? 40 : 5);                   // uykuda daha uzun bekle (guc)
+}
