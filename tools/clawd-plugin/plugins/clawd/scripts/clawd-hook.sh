@@ -73,16 +73,28 @@ case "$ev" in
     ;;
 
   PostToolUse)
-    # Yalniz git commit/push basarisi -> kutlama. Diger basarilarda SESSIZ kal
-    # (hacking state'i bozulmasin, titreme olmasin).
-    cmd="$(jqr '.tool_input.command // ""')"
-    op=""
-    case "$cmd" in
-      *"git commit"*|*"git ci"*) op="commit" ;;
-      *"git push"*)              op="push" ;;
+    # AskUserQuestion/ExitPlanMode CEVAPLANINCA: clawd "?" (ask) pozundan ciksin AMA
+    # idle'a DUSMESIN. PostToolUse bu tool bitince (=kullanici cevaplayinca) tetiklenir;
+    # cevaptan sonra Claude cevabi isleyip DUSUNMEYE gecer, o yuzden think:on yolla ->
+    # firmware ANIM_THINK'e gecer (satir 77) ve tool HUD'unu temizler. Boylece "?"
+    # asili kalmaz ve bir sonraki gercek olaya (tool.pre/stop) kadar think'te bekler.
+    case "$tool" in
+      AskUserQuestion|ExitPlanMode)
+        body='{"k":"think","d":{"on":true}}'
+        ;;
+      *)
+        # Yalniz git commit/push basarisi -> kutlama. Diger basarilarda SESSIZ kal
+        # (hacking state'i bozulmasin, titreme olmasin).
+        cmd="$(jqr '.tool_input.command // ""')"
+        op=""
+        case "$cmd" in
+          *"git commit"*|*"git ci"*) op="commit" ;;
+          *"git push"*)              op="push" ;;
+        esac
+        [ -z "$op" ] && exit 0
+        body="$(jq -nc --arg op "$op" '{k:"git",d:{op:$op}}')"
+        ;;
     esac
-    [ -z "$op" ] && exit 0
-    body="$(jq -nc --arg op "$op" '{k:"git",d:{op:$op}}')"
     ;;
 
   PostToolUseFailure)
