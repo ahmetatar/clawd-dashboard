@@ -24,7 +24,7 @@ _px = CLAWD.load()
 # SABIT yerlesim — tum animasyonlarda ayni (boyut + konum tutarli)
 CANVAS = 64
 CX = (CANVAS - CW) // 2                    # yatay orta
-CY = 8                                     # ust: 8px (bas ustu prop icin), alt: klavye icin bol yer
+CY = (CANVAS - CH) // 2                     # DIKEY ORTA (tum sahnelerde clawd ekran ortasinda)
 
 # clawd yapisi (piksel analizinden)
 FACE = (214, 82, 56, 255)
@@ -34,26 +34,58 @@ EYES = _dark                                       # goz pikselleri
 ARM_Y = range(7, 15)                               # kollarin y bandi
 LARM = [(x, y) for y in ARM_Y for x in range(0, 7)  if _px[x, y][3] > 0]   # sol kol (govde disi)
 RARM = [(x, y) for y in ARM_Y for x in range(37, CW) if _px[x, y][3] > 0]  # sag kol
+# ayaklar (y23-29): sol cift x7-17, sag cift x26-36
+LEGS_L = [(x, y) for y in range(23, CH) for x in range(7, 18)  if _px[x, y][3] > 0]
+LEGS_R = [(x, y) for y in range(23, CH) for x in range(26, 37) if _px[x, y][3] > 0]
 
-def clawd_variant(eye_dx=0, larm_dy=0, rarm_dy=0):
-    """clawd'in bir kopyasi: gozler yatay eye_dx, sol/sag kol dikey kaydirilmis."""
+def _shift(im, pixels, dx, dy):
+    """pixels bolgesini (dx,dy) kaydir: eskiyi temizle, orijinal rengiyle yeniden ciz."""
+    if not (dx or dy): return
+    p = im.load()
+    saved = [(x, y, im.getpixel((x, y))) for (x, y) in pixels]
+    for (x, y) in pixels: p[x, y] = (0, 0, 0, 0)
+    for (x, y, col) in saved:
+        nx, ny = x + dx, y + dy
+        if 0 <= nx < CW and 0 <= ny < CH: p[nx, ny] = col
+
+def _happy_eyes(im):
+    """Gozleri sil, resimdeki gibi INCE (1px) temiz > (sol) ve < (sag) ciz."""
+    p = im.load()
+    for (x, y) in EYES: p[x, y] = FACE
+    gt = [(11,3),(12,4),(12,5),(11,6)]     # ince ">" vertex sagda
+    lt = [(32,3),(31,4),(31,5),(32,6)]     # ince "<" vertex solda
+    for (x, y) in gt + lt:
+        if 0 <= x < CW and 0 <= y < CH: p[x, y] = EYE_COL
+
+def clawd_variant(eye_dx=0, larm_dy=0, rarm_dy=0, eyes="normal",
+                  lleg_dy=0, rleg_dy=0):
+    """clawd kopyasi. eyes='happy' -> > < ; kollar VE ayaklar ayni yontemle (dikey) kaydirilir."""
     im = CLAWD.copy(); p = im.load()
-    # --- gozleri kaydir ---
-    if eye_dx:
-        for (x, y) in EYES: p[x, y] = FACE            # sil
+    # --- gozler ---
+    if eyes == "happy":
+        _happy_eyes(im)
+    elif eye_dx:
+        for (x, y) in EYES: p[x, y] = FACE
         for (x, y) in EYES:
             nx = min(CW - 1, max(0, x + eye_dx)); p[nx, y] = EYE_COL
-    # --- kollari dikey kaydir (govde disi cikinti) ---
-    for arm, dy in ((LARM, larm_dy), (RARM, rarm_dy)):
-        if not dy: continue
-        cols = {}
-        for (x, y) in arm: cols.setdefault(x, []).append((y, im.getpixel((x, y))))
-        for (x, y) in arm: p[x, y] = (0, 0, 0, 0)     # eski kol pikselini temizle
-        for x, ys in cols.items():
-            for (y, col) in ys:
-                ny = y + dy
-                if 0 <= ny < CH: p[x, ny] = col
+    # --- kollar VE ayaklar: hepsi dikey _shift (kol yontemi -> temiz, bozulmasiz) ---
+    _shift(im, LARM, 0, larm_dy)
+    _shift(im, RARM, 0, rarm_dy)
+    _shift(im, LEGS_L, 0, lleg_dy)
+    _shift(im, LEGS_R, 0, rleg_dy)
     return im
+
+# --- kalp (kucuk), cesitli ekran noktalarinda cikip kaybolur ---
+HEART = (222, 40, 44, 255); HEART_HI = (255, 90, 80, 255)   # kirmizi
+_HEART_PX = [(1,0),(3,0),(0,1),(1,1),(2,1),(3,1),(4,1),
+             (0,2),(1,2),(2,2),(3,2),(4,2),(1,3),(2,3),(3,3),(2,4)]
+def draw_heart(c, cx, cy):
+    p = c.load()
+    for (x, y) in _HEART_PX:
+        px_, py_ = cx + x, cy + y
+        if 0 <= px_ < CANVAS and 0 <= py_ < CANVAS:
+            p[px_, py_] = HEART
+    if 0 <= cx+1 < CANVAS and 0 <= cy+1 < CANVAS: p[cx+1, cy+1] = HEART_HI  # parlak nokta
 
 def base_canvas():
     return Image.new("RGBA", (CANVAS, CANVAS), (0, 0, 0, 0))
@@ -167,7 +199,31 @@ def anim_hacking(n=8):
         out.append(c)
     return out
 
-ANIMS = {"idle": anim_idle, "hacking": anim_hacking}
+def anim_happy(n=8):
+    """Sevincli: clawd ziplar (2 hop), kollar havada kalkar, 4 ayak zit fazda sag-sol
+    mekik yapar, gozler > < , cevrede kalpler cikip kaybolur."""
+    out = []
+    # kalp olaylari: (x, taban_y, baslangic_frame) — age<life iken yukari suzulur
+    hearts = [(3, 26, 0), (55, 30, 2), (29, 3, 4), (2, 12, 5), (55, 14, 6)]
+    life = 4
+    for i in range(n):
+        bounce = round(4 * abs(math.sin(i / n * 2 * math.pi)))   # 0..4, iki hop
+        airborne = bounce >= 3
+        arm = -1 if airborne else 0                               # havada kollar kalkar
+        # ayaklar marS: sol cift kalkar / iner, sag cift zit fazda (temiz dikey)
+        lleg = -1 if i % 2 == 0 else 0
+        rleg = 0 if i % 2 == 0 else -1
+        cl = clawd_variant(eyes="normal", larm_dy=arm, rarm_dy=arm,   # kare gozler (eski)
+                           lleg_dy=lleg, rleg_dy=rleg)
+        c = base_canvas()
+        place(c, cl, dy=-bounce)                                  # zipla (yukari)
+        for (hx, hy, st) in hearts:                               # kalpler
+            age = (i - st) % n
+            if age < life: draw_heart(c, hx, hy - age)
+        out.append(c)
+    return out
+
+ANIMS = {"idle": anim_idle, "hacking": anim_hacking, "happy": anim_happy}
 
 def save(name, frames):
     dst = os.path.join(HERE, "out", f"anim_{name}")
