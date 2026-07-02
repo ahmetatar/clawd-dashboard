@@ -263,8 +263,11 @@ void loop() {
   Ev e;
   while (xQueueReceive(evq, &e, 0) == pdTRUE) {
     power.notifyActivity();
-    // Claude mesgul mu? Stop (session.stop) = turn bitti -> boysa; aksi halde calisiyor.
-    power.setBusy(strcmp(e.k, "session.stop") != 0);
+    // Claude mesgul mu? session.start ve session.stop = calisma YOK -> busy kapali.
+    // session.start'i busy sayarsak, olaysiz acilan / (/clear'lanan) oturumda cihaz
+    // 10 dk uyanik kalir ve 30s dim / 120s uyku baypas olur. Gercek "mesgul" ancak
+    // prompt/tool/think ile baslar, session.stop ile biter.
+    power.setBusy(strcmp(e.k, "session.start") != 0 && strcmp(e.k, "session.stop") != 0);
     int id = mapEvent(e);
     if (id >= 0 && id != (int)curAnim) setAnim((AnimId)id);
     updateHud(e);                                      // sol-alt flavor + oturum
