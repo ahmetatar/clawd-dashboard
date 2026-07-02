@@ -57,17 +57,19 @@ def _happy_eyes(im):
     for (x, y) in gt + lt:
         if 0 <= x < CW and 0 <= y < CH: p[x, y] = EYE_COL
 
-def clawd_variant(eye_dx=0, larm_dy=0, rarm_dy=0, eyes="normal",
+def clawd_variant(eye_dx=0, eye_dy=0, larm_dy=0, rarm_dy=0, eyes="normal",
                   lleg_dy=0, rleg_dy=0):
-    """clawd kopyasi. eyes='happy' -> > < ; kollar VE ayaklar ayni yontemle (dikey) kaydirilir."""
+    """clawd kopyasi. eyes='happy' -> > < ; gozler (eye_dx,eye_dy) kayar (yukari bakis vb);
+    kollar VE ayaklar ayni yontemle (dikey) kaydirilir."""
     im = CLAWD.copy(); p = im.load()
     # --- gozler ---
     if eyes == "happy":
         _happy_eyes(im)
-    elif eye_dx:
+    elif eye_dx or eye_dy:
         for (x, y) in EYES: p[x, y] = FACE
         for (x, y) in EYES:
-            nx = min(CW - 1, max(0, x + eye_dx)); p[nx, y] = EYE_COL
+            nx = min(CW - 1, max(0, x + eye_dx)); ny = min(CH - 1, max(0, y + eye_dy))
+            p[nx, ny] = EYE_COL
     # --- kollar VE ayaklar: hepsi dikey _shift (kol yontemi -> temiz, bozulmasiz) ---
     _shift(im, LARM, 0, larm_dy)
     _shift(im, RARM, 0, rarm_dy)
@@ -199,6 +201,73 @@ def anim_hacking(n=8):
         out.append(c)
     return out
 
+# --- dusunce balonu (3B, golgeli puffy bulut) ---
+CLOUD_W = (247, 248, 246, 255)   # ust beyaz
+CLOUD_SH = (196, 199, 212, 255)  # alt golge (hacim)
+CLOUD_LN = (62, 64, 80, 255)     # outline
+CLOUD_HI = (255, 255, 255, 255)  # ust-sol highlight
+DOT = (70, 72, 88, 255)
+
+def _shade_from_mask(mask):
+    """Bir maskeden 3B sprite: turetilmis temiz outline + alt golge (hacim) + ust-sol highlight."""
+    w, h = mask.size; mp = mask.load()
+    spr = Image.new("RGBA", (w, h), (0, 0, 0, 0)); p = spr.load()
+    def solid(x, y): return 0 <= x < w and 0 <= y < h and mp[x, y] >= 128
+    for y in range(h):
+        for x in range(w):
+            if not solid(x, y): continue
+            if not (solid(x-1, y) and solid(x+1, y) and solid(x, y-1) and solid(x, y+1)):
+                p[x, y] = CLOUD_LN                       # kenar -> outline
+            elif not solid(x, y+2):                      # alta yakin ic -> golge
+                p[x, y] = CLOUD_SH
+            elif not solid(x-1, y-1) and y < h * 0.5:    # ust-sol ic rim -> highlight
+                p[x, y] = CLOUD_HI
+            else:
+                p[x, y] = CLOUD_W
+    return spr
+
+def _build_rrect(w, h, r):
+    """KARE/bloklu balon (hafif yuvarlatilmis kose, clawd'in koseli diliyle uyumlu)."""
+    m = Image.new("L", (w, h), 0)
+    ImageDraw.Draw(m).rounded_rectangle([0, 0, w - 1, h - 1], radius=r, fill=255)
+    return _shade_from_mask(m)
+
+def _build_ellipse(w, h):
+    """Yuvarlak minik puf (iz kabarcigi icin)."""
+    m = Image.new("L", (w, h), 0)
+    ImageDraw.Draw(m).ellipse([0, 0, w - 1, h - 1], fill=255)
+    return _shade_from_mask(m)
+
+# ana kare balon + iki iz kabarcigi (ilk cikan minik puf YUVARLAK)
+_BUBBLE = _build_rrect(22, 12, 3)
+_BUB1   = _build_rrect(5, 4, 1)
+_BUB2   = _build_ellipse(4, 4)
+
+def draw_thought_bubble(c, ndots):
+    # TAMAMEN clawd ustunde (kafayi kapatmaz): ana balon sag-ust, iz kabarciklari yukari
+    c.alpha_composite(_BUBBLE, (38, 0))                  # x38-59, y0-11 (clawd y17 ustunde)
+    c.alpha_composite(_BUB1, (34, 11))                   # x34-38, y11-14
+    c.alpha_composite(_BUB2, (30, 14))                   # yuvarlak minik puf (kafaya en yakin)
+    d = ImageDraw.Draw(c)
+    for k in range(ndots):                               # ... noktalari
+        dx = 43 + k * 4
+        d.rectangle([dx, 5, dx + 1, 6], fill=DOT)
+
+def anim_think(n=8):
+    """Dusunen clawd: sakin, hafif yana sallanir; gozler yukari bakip gezinir;
+    bas ustundeki dusunce balonunda ... noktalari sirayla dolar."""
+    out = []
+    for i in range(n):
+        dx = round(1.5 * math.sin(i / n * 2 * math.pi))          # hafif yana sallanma ±1
+        eye_dx = (0, 0, 1, 1, 0, -1, -1, 0)[i % 8]               # yavas gezinme
+        cl = clawd_variant(eye_dx=eye_dx, eye_dy=-1)             # gozler yukari + gezinir
+        c = base_canvas()
+        place(c, cl, dx=dx)
+        ndots = (i // 2) % 3 + 1                                  # 1..3 dolar (dongu)
+        draw_thought_bubble(c, ndots)
+        out.append(c)
+    return out
+
 def anim_happy(n=8):
     """Sevincli: clawd ziplar (2 hop), kollar havada kalkar, 4 ayak zit fazda sag-sol
     mekik yapar, gozler > < , cevrede kalpler cikip kaybolur."""
@@ -223,7 +292,7 @@ def anim_happy(n=8):
         out.append(c)
     return out
 
-ANIMS = {"idle": anim_idle, "hacking": anim_hacking, "happy": anim_happy}
+ANIMS = {"idle": anim_idle, "hacking": anim_hacking, "happy": anim_happy, "think": anim_think}
 
 def save(name, frames):
     dst = os.path.join(HERE, "out", f"anim_{name}")
