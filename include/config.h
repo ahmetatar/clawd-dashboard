@@ -25,10 +25,25 @@ constexpr uint8_t BG_R = 36;
 constexpr uint8_t BG_G = 39;
 constexpr uint8_t BG_B = 44;
 
+// 8-8-8 -> RGB565 (statik baslatma icin; tft.color565 uye fonksiyon, constexpr degil).
+#ifndef RGB565
+#define RGB565(r, g, b) ((uint16_t)((((r) >> 3) << 11) | (((g) >> 2) << 5) | ((b) >> 3)))
+#endif
+
+// clawd maskotunun baskin turuncusu (out/clawd_south.png'den orneklendi) — HUD
+// aksiyon metni bu sabit renkte yazilir (mood'a gore degil).
+constexpr uint16_t CLAWD_ORANGE = RGB565(213, 82, 56);
+
 // ---- guc yonetimi ----
 // idle = son event/dokunmadan bu yana gecen sure.
 constexpr uint32_t T_DIM_MS   = 20000;  // 20 sn: arka isigi kis
 constexpr uint32_t T_SLEEP_MS = 90000;  // 90 sn: ekrani sondur + uyku
+
+// Claude MESGULKEN (olay akisi basladi, Stop gelmedi) uyku/kisma TAMAMEN kapali:
+// uzun bir tool (build/test) calisirken cihaz uyumaz. GUVENLIK: Stop olayi hic
+// gelmezse bu kadar OLAYSIZ sureden sonra normal idle'a don (ekran takili kalmasin).
+// Uzun tool'lardan buyuk olmali (build/test'ler dakikalar surebilir).
+constexpr uint32_t T_BUSY_MAX_MS = 600000;  // 10 dk emniyet tavani
 
 // arka isik parlaklik seviyeleri (8-bit LEDC duty, 0..255)
 constexpr uint8_t  BL_FULL = 255;       // aktif: tam parlaklik

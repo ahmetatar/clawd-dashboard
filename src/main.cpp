@@ -26,15 +26,17 @@
 #include "secrets.h"
 #include "anims.h"
 #include "power.h"
+#include "hud.h"
 
 TFT_eSPI tft = TFT_eSPI();
 SPIClass touchSPI(HSPI);
 XPT2046_Touchscreen ts(T_CS);
 AsyncWebServer server(80);
 PowerManager power;
+Hud hud;
 
 // ---- olay kuyrugu (07'den) ----
-struct Ev { char k[24]; char g[10]; char s[48]; bool ok; bool on; int ctx; };
+struct Ev { char k[24]; char g[10]; char s[48]; char tool[16]; bool ok; bool on; int ctx; };
 QueueHandle_t evq;
 
 // ---- animasyon durumu ----
@@ -77,6 +79,64 @@ static int mapEvent(const Ev &e) {
   if (!strcmp(k, "session.stop"))   return ANIM_IDLE;
   if (!strcmp(k, "status"))         return -1;     // sadece canli tut, animasyonu bozma
   return ANIM_IDLE;
+}
+
+// ---- HUD: olay -> kisa flavor metni (Feature 1 + 3) ----
+// Aksiyon metni = KOMUT DEGIL, kisa/eglenceli "flavor" kelime (status-line tarzi).
+// Karmasik komutlari gostermek yerine mood'a gore bir havuzdan rastgele secilir.
+// Titremeyi onlemek icin: kategori DEGISMEDIKCE yeni kelime secilmez (ayni is
+// fazinda kelime sabit kalir).
+enum HudCat { HC_IDLE, HC_THINK, HC_WORK, HC_HAPPY, HC_OOPS };
+int g_hudCat = -1;
+
+static const char *WORK[]  = { "Crafting...", "Tinkering...", "Hacking...", "Wrangling...",
+                               "Conjuring...", "Summoning...", "Brewing...", "Forging...",
+                               "Cooking...", "Noodling...", "Fiddling...", "Hustling..." };
+static const char *THINK[] = { "Pondering...", "Thinking...", "Musing...", "Scheming...",
+                               "Plotting...", "Percolating...", "Daydreaming...", "Wondering..." };
+static const char *HAPPY[] = { "Shipping!", "Nailed it!", "Boom!", "Committed!",
+                               "Victory!", "High five!" };
+static const char *OOPS[]  = { "Oops...", "Yikes...", "Uh-oh...", "Welp...",
+                               "Awkward...", "Facepalm..." };
+
+static const char *pick(const char *const *pool, int n) { return pool[esp_random() % n]; }
+
+// Tool adini sag-alt icin kisalt: mcp__server__method -> son segment.
+static const char *niceTool(const char *t) {
+  if (!strncmp(t, "mcp__", 5)) { const char *p = strrchr(t, '_'); return (p && p[1]) ? p + 1 : "mcp"; }
+  return t;
+}
+
+// Kategoriyi HUD'a yansit. Kategori degismediyse dokunma (kelime sabit kalir).
+static void setHudCat(HudCat cat) {
+  if ((int)cat == g_hudCat) return;
+  g_hudCat = cat;
+  switch (cat) {
+    case HC_WORK:  hud.setAction(pick(WORK,  12)); break;
+    case HC_THINK: hud.setAction(pick(THINK,  8)); break;
+    case HC_HAPPY: hud.setAction(pick(HAPPY,  6)); break;
+    case HC_OOPS:  hud.setAction(pick(OOPS,   6)); break;
+    case HC_IDLE:  hud.setAction(""); break;
+  }
+}
+
+// Olayi HUD'a yansit: sol-alt flavor metni + sag-alt calisan tool adi.
+// tool ismi tool.pre'de set edilir; dusunme/bosta temizlenir; tool.post'ta kalir
+// (biten arac kisa sure gorunur, sonraki tool.pre hemen degistirir).
+static void updateHud(const Ev &e) {
+  const char *k = e.k;
+  if (!strcmp(k, "session.start")) { setHudCat(HC_HAPPY); hud.setTool(""); return; }
+  if (!strcmp(k, "session.stop"))  { setHudCat(HC_IDLE);  hud.setTool(""); return; }
+  if (!strcmp(k, "tool.post"))     { setHudCat(e.ok ? HC_IDLE : HC_OOPS); return; }
+  if (!strcmp(k, "git"))           { setHudCat(HC_HAPPY); return; }
+  if (!strcmp(k, "prompt.submit") || !strcmp(k, "compact") || !strcmp(k, "wait") ||
+      (!strcmp(k, "think") && e.on)) { setHudCat(HC_THINK); hud.setTool(""); return; }
+  if (!strcmp(k, "think") && !e.on)  { setHudCat(HC_IDLE); return; }
+  if (!strcmp(k, "tool.pre") || !strcmp(k, "agent.spawn")) {
+    setHudCat(HC_WORK);
+    hud.setTool(niceTool(e.tool[0] ? e.tool : e.g));
+    return;
+  }
 }
 
 static void drawFrame(AnimId id, int f) {
@@ -138,7 +198,7 @@ void setup() {
   if (MDNS.begin("clawd")) MDNS.addService("http", "tcp", 80);
 
   server.on("/health", HTTP_GET, [](AsyncWebServerRequest *req) {
-    req->send(200, "application/json", "{\"fw\":\"1.0.0\",\"caps\":[\"anim\",\"led\",\"touch\",\"power\"]}");
+    req->send(200, "application/json", "{\"fw\":\"1.0.0\",\"caps\":[\"anim\",\"led\",\"touch\",\"power\",\"hud\"]}");
   });
 
   // POST /e (JSON) -> kuyruga push, 204
@@ -148,6 +208,7 @@ void setup() {
     strlcpy(e.k, o["k"] | "?", sizeof(e.k));
     JsonObject d = o["d"];
     strlcpy(e.g, d["g"] | "", sizeof(e.g));
+    strlcpy(e.tool, d["tool"] | "", sizeof(e.tool));
     strlcpy(e.s, d["s"] | (d["tool"] | (d["op"] | "")), sizeof(e.s));
     e.ok  = d["ok"]  | true;
     e.on  = d["on"]  | false;
@@ -164,6 +225,12 @@ void setup() {
 
   tft.fillScreen(tft.color565(BG_R, BG_G, BG_B));  // fume letterbox
   setAnim(ANIM_IDLE);
+
+  // HUD: koseleri baslat + ilk cizim (WiFi sinyal cubuklari RSSI'den).
+  hud.begin(&tft);
+  hud.setWifi(true, WiFi.RSSI());
+  hud.setAction("");                               // idle: sol-alt bos
+  hud.render();
 }
 
 // Uyku durumu kenarlarinda CPU/uyandirma yan etkileri.
@@ -196,8 +263,11 @@ void loop() {
   Ev e;
   while (xQueueReceive(evq, &e, 0) == pdTRUE) {
     power.notifyActivity();
+    // Claude mesgul mu? Stop (session.stop) = turn bitti -> boysa; aksi halde calisiyor.
+    power.setBusy(strcmp(e.k, "session.stop") != 0);
     int id = mapEvent(e);
     if (id >= 0 && id != (int)curAnim) setAnim((AnimId)id);
+    updateHud(e);                                      // sol-alt flavor + oturum
     Serial.printf("[clawd] olay k=%s g=%s\n", e.k, e.g);
   }
 
@@ -209,19 +279,31 @@ void loop() {
     PowerManager::State st = power.state();
     applyPowerEdge(st);                              // CPU frekansi
     // Isik dustugunde clawd uyuklama pozuna gecer (kapali gozler + zzZZ).
-    if (st == PowerManager::DIM) setAnim(ANIM_SLEEP);
+    if (st == PowerManager::DIM) { setAnim(ANIM_SLEEP); setHudCat(HC_IDLE); }
     // Uyandi: uyku pozundaysak idle'a don (bir olay yeni anim atadiysa ona dokunma).
-    else if (st == PowerManager::ACTIVE && curAnim == ANIM_SLEEP) setAnim(ANIM_IDLE);
+    else if (st == PowerManager::ACTIVE && curAnim == ANIM_SLEEP) { setAnim(ANIM_IDLE); setHudCat(HC_IDLE); }
     // SLEEP: ekran kapali, cizim yok.
   }
 
-  // uykudan yeni ciktiysak: fume zemini tazele (son frame duruyordu)
-  if (wasAsleep && !power.asleep()) tft.fillScreen(tft.color565(BG_R, BG_G, BG_B));
+  // uykudan yeni ciktiysak: fume zemini tazele (son frame duruyordu) + HUD'u yeniden ciz
+  if (wasAsleep && !power.asleep()) {
+    tft.fillScreen(tft.color565(BG_R, BG_G, BG_B));
+    hud.markAllDirty();
+  }
 
-  // 4) gecici ifade suresi doldu -> idle
-  if (revertAt && millis() >= revertAt) setAnim(ANIM_IDLE);
+  // 4) gecici ifade suresi doldu -> idle (flavor metnini de temizle)
+  if (revertAt && millis() >= revertAt) { setAnim(ANIM_IDLE); setHudCat(HC_IDLE); }
 
-  // 5) animasyon — uykuda cizme (ekran zaten kapali, CPU'yu bosa harcama)
+  // 5) WiFi sinyalini periyodik yenile (her 4 sn). setWifi yalniz cubuk sayisi
+  //    degisince yeniden cizer -> RSSI dalgalansa da bosuna SPI yok.
+  static uint32_t lastWifiPoll = 0;
+  if (millis() - lastWifiPoll >= 4000) {
+    lastWifiPoll = millis();
+    bool c = (WiFi.status() == WL_CONNECTED);
+    hud.setWifi(c, c ? WiFi.RSSI() : -127);
+  }
+
+  // 6) animasyon + HUD — uykuda cizme (ekran zaten kapali, CPU'yu bosa harcama)
   if (!power.asleep()) {
     uint32_t now = millis();
     if (now - lastFrame >= ANIMS[curAnim].interval) {
@@ -229,6 +311,7 @@ void loop() {
       drawFrame(curAnim, frame);
       frame = (frame + 1) % ANIMS[curAnim].count;
     }
+    hud.render();                                    // yalniz kirli koseler cizilir
   }
 
   delay(power.asleep() ? 40 : 5);                   // uykuda daha uzun bekle (guc)
