@@ -14,7 +14,7 @@ constexpr int T_MISO   = 39;
 constexpr int ANIM_W   = 64;   // tum animasyonlar 64x64
 constexpr int ANIM_H   = 64;
 constexpr int ANIM_S   = 3;    // olcek: 64*3 = 192 px
-constexpr int HOLD_MS  = 2500; // gecici ifadeler (happy/oops) sonrasi idle'a donus
+constexpr int HOLD_MS  = 4000; // gecici ifadeler (happy/oops) sonrasi idle'a donus
 
 // ---- zemin rengi (letterbox + animasyon frame arka plani) ----
 // FUME SIYAH: tam siyah degil, hafif serin koyu kul. Turuncu clawd'i one cikarir.
@@ -36,8 +36,8 @@ constexpr uint16_t CLAWD_ORANGE = RGB565(213, 82, 56);
 
 // ---- guc yonetimi ----
 // idle = son event/dokunmadan bu yana gecen sure.
-constexpr uint32_t T_DIM_MS   = 20000;  // 20 sn: arka isigi kis
-constexpr uint32_t T_SLEEP_MS = 90000;  // 90 sn: ekrani sondur + uyku
+constexpr uint32_t T_DIM_MS   = 30000;  // 30 sn: arka isigi kis
+constexpr uint32_t T_SLEEP_MS = 120000; // 120 sn: ekrani sondur + uyku
 
 // Claude MESGULKEN (olay akisi basladi, Stop gelmedi) uyku/kisma TAMAMEN kapali:
 // uzun bir tool (build/test) calisirken cihaz uyumaz. GUVENLIK: Stop olayi hic

@@ -4,8 +4,8 @@
 // animasyonuyla (idle/hacking/happy/think/oops) tepki verir.
 //
 // ILK OZELLIK — GUC YONETIMI (bkz. power.h):
-//   20 sn olaysiz -> arka isik %11'e kisilir (dim), animasyon doner
-//   90 sn olaysiz -> ekran soner, animasyon durur, CPU 80MHz, WiFi modem-sleep
+//   30 sn olaysiz -> arka isik %11'e kisilir (dim), animasyon doner
+//   120 sn olaysiz -> ekran soner, animasyon durur, CPU 80MHz, WiFi modem-sleep
 //   POST /e veya dokunma -> aninda tam parlaklik + 240MHz + animasyon (uyanma)
 //
 // MIMARI: AsyncWebServer callback'leri AYRI task'ta calisir; SPI'ye (ekran)
