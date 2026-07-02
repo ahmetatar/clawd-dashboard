@@ -19,6 +19,9 @@ secrets.sh
 _clawd_writetest.txt
 *.pem
 
+# Claude Code yerel plugin etkinleştirmesi (kişisel, paylaşılmaz)
+.claude/settings.local.json
+
 # Python
 __pycache__/
 *.pyc

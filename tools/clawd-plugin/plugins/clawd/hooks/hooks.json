@@ -1,0 +1,26 @@
+{
+  "description": "clawd maskotu — Claude Code aktivitesini cihaza (clawd.local) yansitir",
+  "hooks": {
+    "UserPromptSubmit": [
+      { "hooks": [ { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/clawd-hook.sh\"" } ] }
+    ],
+    "PreToolUse": [
+      { "hooks": [ { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/clawd-hook.sh\"" } ] }
+    ],
+    "PostToolUse": [
+      { "matcher": "Bash", "hooks": [ { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/clawd-hook.sh\"" } ] }
+    ],
+    "PostToolUseFailure": [
+      { "hooks": [ { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/clawd-hook.sh\"" } ] }
+    ],
+    "PreCompact": [
+      { "hooks": [ { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/clawd-hook.sh\"" } ] }
+    ],
+    "SessionStart": [
+      { "hooks": [ { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/clawd-hook.sh\"" } ] }
+    ],
+    "Stop": [
+      { "hooks": [ { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/clawd-hook.sh\"" } ] }
+    ]
+  }
+}
