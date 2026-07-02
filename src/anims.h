@@ -9,8 +9,9 @@
 #include "anims/clawd_happy.h"
 #include "anims/clawd_think.h"
 #include "anims/clawd_oops.h"
+#include "anims/clawd_sleep.h"
 
-enum AnimId { ANIM_IDLE, ANIM_HACKING, ANIM_HAPPY, ANIM_THINK, ANIM_OOPS, ANIM_COUNT };
+enum AnimId { ANIM_IDLE, ANIM_HACKING, ANIM_HAPPY, ANIM_THINK, ANIM_OOPS, ANIM_SLEEP, ANIM_COUNT };
 
 struct Anim {
   const uint16_t (*frames)[ANIM_W * ANIM_H];  // [count][W*H]
@@ -29,4 +30,5 @@ static const Anim ANIMS[ANIM_COUNT] = {
   { clawd_happy,   CLAWD_HAPPY_FRAMES,    91, true,  true,  false, "happy"   },
   { clawd_think,   CLAWD_THINK_FRAMES,   200, false, false, true,  "think"   },
   { clawd_oops,    CLAWD_OOPS_FRAMES,     91, true,  false, true,  "oops"    },
+  { clawd_sleep,   CLAWD_SLEEP_FRAMES,   200, false, false, false, "sleep"   },  // DIM'de: uyuklama pozu
 };

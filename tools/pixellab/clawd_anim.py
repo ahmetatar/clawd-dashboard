@@ -57,14 +57,29 @@ def _happy_eyes(im):
     for (x, y) in gt + lt:
         if 0 <= x < CW and 0 <= y < CH: p[x, y] = EYE_COL
 
+def _sleep_eyes(im):
+    """Gozleri KAPALI cizgi yap: karesel gozleri sil, her goz icin ince yatay cizgi."""
+    p = im.load()
+    for (x, y) in EYES: p[x, y] = FACE
+    left  = [(x, y) for (x, y) in EYES if x < CW // 2]
+    right = [(x, y) for (x, y) in EYES if x >= CW // 2]
+    for cl in (left, right):
+        if not cl: continue
+        xs = [x for x, y in cl]; ys = [y for x, y in cl]
+        cy = (min(ys) + max(ys)) // 2
+        for x in range(min(xs) - 1, max(xs) + 2):        # hafif tasan ince cizgi
+            if 0 <= x < CW: p[x, cy] = EYE_COL
+
 def clawd_variant(eye_dx=0, eye_dy=0, larm_dy=0, rarm_dy=0, eyes="normal",
                   lleg_dy=0, rleg_dy=0):
-    """clawd kopyasi. eyes='happy' -> > < ; gozler (eye_dx,eye_dy) kayar (yukari bakis vb);
-    kollar VE ayaklar ayni yontemle (dikey) kaydirilir."""
+    """clawd kopyasi. eyes='happy' -> > < ; eyes='sleep' -> kapali cizgi;
+    gozler (eye_dx,eye_dy) kayar; kollar VE ayaklar dikey kaydirilir."""
     im = CLAWD.copy(); p = im.load()
     # --- gozler ---
     if eyes == "happy":
         _happy_eyes(im)
+    elif eyes == "sleep":
+        _sleep_eyes(im)
     elif eye_dx or eye_dy:
         for (x, y) in EYES: p[x, y] = FACE
         for (x, y) in EYES:
@@ -165,13 +180,12 @@ def draw_keyboard(d, x, y, w, h, pressed):
 
 # ---------- animasyonlar ----------
 def anim_idle(n=8):
-    """Yumusak nefes: dikey squash (ayaklar sabit), gozler cok hafif tarar."""
+    """Yumusak nefes: dikey squash (ayaklar sabit). Gozler SABIT (oynamaz)."""
     out = []
     for i in range(n):
         sy = 1.0 - 0.06 * (0.5 - 0.5 * math.cos(i / n * 2 * math.pi))
         nh = max(1, int(round(CH * sy)))
-        eye_dx = (0, 0, 1, 0, 0, 0, -1, 0)[i % 8]
-        cl = clawd_variant(eye_dx=eye_dx)
+        cl = clawd_variant()                                  # gozler sabit
         cl = cl.resize((CW, nh), Image.NEAREST)
         c = base_canvas()
         c.alpha_composite(cl, (CX, CY + (CH - nh)))       # ayaklar sabit (alt hizali)
@@ -328,8 +342,52 @@ def anim_oops(n=8):
         out.append(c)
     return out
 
+# --- uyku: sagdan yukari suzulen zzZZ ---
+ZZZ = (120, 132, 156, 255)                              # soluk uykulu gri-mavi
+# gercek 'Z' glyph, 4 genis x 5 yuksek: ust cizgi -> kose diagonal -> alt cizgi
+#   X X X X
+#   . . . X
+#   . . X .
+#   . X . .
+#   X X X X
+_ZGLYPH = [(0,0),(1,0),(2,0),(3,0),
+                             (3,1),
+                       (2,2),
+                 (1,3),
+           (0,4),(1,4),(2,4),(3,4)]
+def draw_z(c, x, y, s):
+    """(x,y) sol-ust kosesine s kat olcekli 'Z' bas."""
+    p = c.load()
+    for (gx, gy) in _ZGLYPH:
+        for a in range(s):
+            for b in range(s):
+                px_, py_ = x + gx * s + a, y + gy * s + b
+                if 0 <= px_ < CANVAS and 0 <= py_ < CANVAS: p[px_, py_] = ZZZ
+
+#          (x, y, olcek) — SABIT, ayrik konumlar: kafaya yakin kucuk -> yukarida buyuk
+_ZTRAIL = [(43, 12, 1), (50, 6, 1), (56, -1, 2)]
+def draw_zzz(c, i, n):
+    """3 Z sabit ayrik konumda; sirayla belirir (z -> zz -> zzZ) -> yukari suzulme hissi."""
+    count = (i // 2) % len(_ZTRAIL) + 1                 # 1,1,2,2,3,3,1,1 (dongu)
+    for k in range(count):
+        draw_z(c, *_ZTRAIL[k])
+
+def anim_sleep(n=8):
+    """Uyuyan clawd: idle nefesi + KAPALI cizgi gozler + sagdan yukari suzulen zzZZ."""
+    out = []
+    for i in range(n):
+        sy = 1.0 - 0.06 * (0.5 - 0.5 * math.cos(i / n * 2 * math.pi))   # ayni nefes
+        nh = max(1, int(round(CH * sy)))
+        cl = clawd_variant(eyes="sleep")
+        cl = cl.resize((CW, nh), Image.NEAREST)
+        c = base_canvas()
+        c.alpha_composite(cl, (CX, CY + (CH - nh)))     # ayaklar sabit (alt hizali)
+        draw_zzz(c, i, n)
+        out.append(c)
+    return out
+
 ANIMS = {"idle": anim_idle, "hacking": anim_hacking, "happy": anim_happy,
-         "think": anim_think, "oops": anim_oops}
+         "think": anim_think, "oops": anim_oops, "sleep": anim_sleep}
 
 def save(name, frames):
     dst = os.path.join(HERE, "out", f"anim_{name}")
