@@ -162,7 +162,7 @@ void setup() {
   server.begin();
   Serial.println("[clawd] HTTP :80 ayakta (/e /health)");
 
-  tft.fillScreen(tft.color565(239, 239, 234));     // krem letterbox
+  tft.fillScreen(tft.color565(BG_R, BG_G, BG_B));  // fume letterbox
   setAnim(ANIM_IDLE);
 }
 
@@ -215,8 +215,8 @@ void loop() {
     // SLEEP: ekran kapali, cizim yok.
   }
 
-  // uykudan yeni ciktiysak: krem zemini tazele (son frame duruyordu)
-  if (wasAsleep && !power.asleep()) tft.fillScreen(tft.color565(239, 239, 234));
+  // uykudan yeni ciktiysak: fume zemini tazele (son frame duruyordu)
+  if (wasAsleep && !power.asleep()) tft.fillScreen(tft.color565(BG_R, BG_G, BG_B));
 
   // 4) gecici ifade suresi doldu -> idle
   if (revertAt && millis() >= revertAt) setAnim(ANIM_IDLE);

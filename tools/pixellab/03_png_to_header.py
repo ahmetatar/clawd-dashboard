@@ -6,7 +6,7 @@
 import sys, os, glob
 from PIL import Image
 
-BG = (239, 239, 234)  # cihaz krem zemini
+BG = (36, 39, 44)  # cihaz fume zemini (include/config.h BG_R/G/B ile AYNI olmali)
 src = sys.argv[1]
 name = sys.argv[2] if len(sys.argv) > 2 else os.path.basename(src).replace("anim_", "")
 
